@@ -58,19 +58,20 @@ fuel_df <- fuel_df %>%
       T ~ "Egyéb"
     ),
     city = case_when(
-    city == "Balatonfűred" ~ "Balatonfüred",
-    city == "Balatonmáriafűrdő" ~ "Balatonmáriafürdő",
-    city == "Fűle" ~ "Füle",
-    city == "Fűlöpszállás" ~ "Fülöpszállás",
-    city == "Fűzesabony" ~ "Füzesabony",
-    city == "Pűspökladány" ~ "Püspökladány",
-    city == "Révfűlöp" ~ "Révfülöp",
-    city == "Sűkösd" ~ "Sükösd",
-    city == "Sűmeg" ~ "Sümeg",
-    city == "Tiszafűred" ~ "Tiszafüred",
-    city == "Tolna-Mözs" ~ "Tolna",
-    TRUE ~ city
-    )
+      city == "Balatonfűred" ~ "Balatonfüred",
+      city == "Balatonmáriafűrdő" ~ "Balatonmáriafürdő",
+      city == "Fűle" ~ "Füle",
+      city == "Fűlöpszállás" ~ "Fülöpszállás",
+      city == "Fűzesabony" ~ "Füzesabony",
+      city == "Pűspökladány" ~ "Püspökladány",
+      city == "Révfűlöp" ~ "Révfülöp",
+      city == "Sűkösd" ~ "Sükösd",
+      city == "Sűmeg" ~ "Sümeg",
+      city == "Tiszafűred" ~ "Tiszafüred",
+      city == "Tolna-Mözs" ~ "Tolna",
+      TRUE ~ city
+    ),
+    highway = str_detect(address, str_c("M", c(0:1, 3:7), collapse = "|"))
   ) %>%  
   left_join(address) %>% 
   left_join(select(counties, city, county)) %>% 
@@ -84,3 +85,15 @@ city_df <- readxl::read_excel("data/Területi_adatok.xlsx") %>%
   janitor::clean_names()
 
 save(city_df, file = "data/city_df.RData")
+
+highway_df <- readxl::read_excel("data/20211125-ap-au_csomópontok.xls") %>% # FIXME
+  janitor::row_to_names(1) %>% 
+  janitor::clean_names() %>% 
+  select(x = keovx, y = keovy) %>% 
+  mutate_all(as.numeric) %>% 
+  na.omit() %>% 
+  as.matrix() %>% 
+  terra::vect(crs="+proj=utm +zone=10 +datum=WGS84  +units=m") %>% 
+  terra::project("+proj=longlat +datum=WGS84") %>% 
+  terra::geom()
+
