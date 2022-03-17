@@ -11,7 +11,8 @@ highway_df <- readxl::read_excel("data/20211125-ap-au_csomópontok.xls") %>% # F
   na.omit()
 
 n_highway_done <- list.files("data/") %>% 
-  keep(str_detect, "highway_eov")
+  keep(str_detect, "highway_eov") %>% 
+  length()
 
 highway_eov_done <- list.files("data/", full.names = TRUE) %>% 
   keep(str_detect, "highway_eov") %>% 
