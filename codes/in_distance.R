@@ -1,4 +1,5 @@
 in_distance <- function(.data, .dist) {
+  # TODO azonos márkájú
 .data %>% 
   filter(!duplicated(address)) %>% 
   column_to_rownames("address") %>% 
@@ -11,7 +12,7 @@ in_distance <- function(.data, .dist) {
   rownames_to_column("x") %>% 
   pivot_longer(-1) %>% 
   group_by(x) %>% 
-  summarise(sum(value <= .dist * .01506)) %>% # coordinate distance to km
+  summarise(sum(value <= .dist * .01506) - 1) %>% # coordinate distance to km
   set_names("address", str_c("in_", .dist, "km"))
 }
 

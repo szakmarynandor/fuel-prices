@@ -86,14 +86,56 @@ city_df <- readxl::read_excel("data/Területi_adatok.xlsx") %>%
 
 save(city_df, file = "data/city_df.RData")
 
-highway_df <- readxl::read_excel("data/20211125-ap-au_csomópontok.xls") %>% # FIXME
+# highway_df <- 
+readxl::read_excel("data/20211125-ap-au_csomópontok.xls") %>% # FIXME
   janitor::row_to_names(1) %>% 
   janitor::clean_names() %>% 
-  select(x = keovx, y = keovy) %>% 
-  mutate_all(as.numeric) %>% 
+  select(knev, x = keovx, y = keovy) %>% 
+  mutate_at(-1, as.numeric) %>% 
   na.omit() %>% 
-  as.matrix() %>% 
-  terra::vect(crs="+proj=utm +zone=10 +datum=WGS84  +units=m") %>% 
-  terra::project("+proj=longlat +datum=WGS84") %>% 
-  terra::geom()
+  mutate(
+    pmap(list(knev, x, y), function(knev, x, y) LongLatToUTM(x, y, knev, 15))
+  )
 
+energy_agency_2022_df <- readxl::read_excel("data/hazai_koolajpiaci_informaciok_2012_2022.xls", sheet = "2022") %>% 
+  set_names("time", "petrol", "gasoil") %>% 
+  slice(-(1:which(petrol == "Ft/l"))) %>% 
+  na.omit() %>% 
+  mutate(time = as.Date(as.numeric(time), origin =  "1899-12-30")) %>% 
+  mutate_at(-1, as.numeric)
+
+energy_agency_2021_df <- readxl::read_excel("data/hazai_koolajpiaci_informaciok_2012_2022.xls", sheet = "2021") %>% 
+  set_names("time", "petrol", "gasoil") %>% 
+  slice(-(1:which(petrol == "Ft/l"))) %>% 
+  na.omit() %>% 
+  mutate(time = as.Date(as.numeric(time), origin =  "1899-12-30")) %>% 
+  mutate_at(-1, as.numeric)
+
+energy_agency_df <- bind_rows(energy_agency_2021_df, energy_agency_2022_df) %>% 
+  filter(!duplicated(time))
+
+save(energy_agency_df, file = "data/energy_agency_df.RData")
+
+load("data/usdhuf.RData")
+
+crude_df <- read_csv("data/Crude Oil Urals Europe CFR Spot Historical Data.csv") %>% 
+  select(1:2) %>% 
+  rename(time = 1, crude_price = 2) %>% 
+  mutate(time = lubridate::mdy(time))
+
+library(rvest)
+
+crude_df <- read_html("https://www.mnb.hu/arfolyam-tablazat?deviza=rbCurrencySelect&devizaSelected=USD&datefrom=2021.01.01.&datetill=2022.03.17.&order=1") %>% 
+  html_table() %>% 
+  .[[1]] %>% 
+  set_names("time", "usd_huf") %>% 
+  slice(-(1:2)) %>% 
+  mutate(
+    time = lubridate::ymd(time),
+    usd_huf = str_replace_all(usd_huf, ",", "."),
+    usd_huf = as.numeric(usd_huf)
+  ) %>% 
+  full_join(x = crude_df) %>% 
+  arrange(time)
+
+save(crude_df, file = "data/crude_df.RData")
