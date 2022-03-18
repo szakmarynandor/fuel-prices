@@ -86,16 +86,25 @@ city_df <- readxl::read_excel("data/Területi_adatok.xlsx") %>%
 
 save(city_df, file = "data/city_df.RData")
 
-# highway_df <- 
-readxl::read_excel("data/20211125-ap-au_csomópontok.xls") %>% # FIXME
+eov_df <- list.files("data/", full.names = TRUE) %>% 
+  keep(str_detect, "highway_eov\\d.rds") %>% 
+  map_df(read_rds) %>% 
+  rename(eovx = x, eovy = y, Latitude = lat, Longitude = lon) %>% 
+  select(- knev)
+
+
+highway_df <- readxl::read_excel("data/20211125-ap-au_csomópontok.xls") %>% # FIXME
   janitor::row_to_names(1) %>% 
   janitor::clean_names() %>% 
-  select(knev, x = keovx, y = keovy) %>% 
-  mutate_at(-1, as.numeric) %>% 
-  na.omit() %>% 
-  mutate(
-    pmap(list(knev, x, y), function(knev, x, y) LongLatToUTM(x, y, knev, 15))
-  )
+  select(-1) %>% 
+  rename_all(str_remove, "k") %>% 
+  mutate_at(vars(eovx:eovy), as.numeric) %>% 
+  mutate_at(vars(eovx:eovy), round) %>% 
+  mutate_at(vars(eovx:eovy), as.character) %>% 
+  left_join(eov_df) %>% 
+    na.omit()
+
+save(highway_df, file = "data/highway_df.RData")
 
 energy_agency_2022_df <- readxl::read_excel("data/hazai_koolajpiaci_informaciok_2012_2022.xls", sheet = "2022") %>% 
   set_names("time", "petrol", "gasoil") %>% 
