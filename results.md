@@ -63,3 +63,26 @@ crude_df %>%
 ```
 
 <img src="figures/crude_price-1.png" style="display: block; margin: auto;" />
+
+``` r
+download_days <- fuel_df %>% 
+  pull(date) %>% 
+  unique() %>% 
+  sort()
+
+Sys.setlocale("LC_TIME", "C") # mac os specific language setup
+```
+
+    ## [1] "C"
+
+``` r
+calendR::calendR(
+  start_date = "2021-08-01",
+  end_date =  "2022-03-31",
+  special.col = "lightblue",
+  special.days = download_days - as.Date("2021-07-31"),
+  start = "M"
+)
+```
+
+<img src="figures/calendar-1.png" style="display: block; margin: auto;" />
