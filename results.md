@@ -50,7 +50,7 @@ energy_agency_df %>%
 <img src="figures/price_control-1.png" style="display: block; margin: auto;" />
 
 ``` r
-crude_df %>% 
+p1 <- crude_df %>% 
   mutate(price_huf = crude_price * usd_huf) %>% 
   pivot_longer(-1) %>% 
   mutate(name = fct_inorder(name)) %>% 
@@ -59,10 +59,45 @@ crude_df %>%
   facet_wrap(~ name, scales = "free_y", ncol = 1, labeller = as_labeller(c("usd_huf" = "US dollar in HUF", "crude_price" = "Crude oil price in US dollar", "price_huf" = "Crude oil price in HUF"))) + 
   geom_line() + 
   scale_x_date(breaks = scales::date_breaks("months"), labels = ~ NiceMonth(., keep_year = TRUE, label = TRUE)) + 
-  labs(x = NULL, y = NULL)
+  labs(x = NULL, y = " ")
+
+p1
 ```
 
-<img src="figures/crude_price-1.png" style="display: block; margin: auto;" />
+<img src="figures/crude_price_raw-1.png" style="display: block; margin: auto;" />
+
+``` r
+p2 <- crude_df %>% 
+  mutate(price_huf = crude_price * usd_huf) %>% 
+  slice(-1) %>% 
+  mutate_at(-1, ~ . / first(.)) %>% 
+  pivot_longer(-1) %>%
+  mutate(
+    name = fct_inorder(name),
+    name = fct_relabel(name, ~ case_when(
+      . == "usd_huf" ~ "US dollar in HUF", 
+      . == "crude_price" ~ "Crude oil price in US dollar",
+      . == "price_huf" ~ "Crude oil price in HUF"
+    ))
+    ) %>% 
+  na.omit() %>% 
+  ggplot(aes(time, value, color = name)) + 
+  geom_hline(yintercept = 1, lty = 2) +
+  geom_line() + 
+  scale_x_date(breaks = scales::date_breaks("months"), labels = ~ NiceMonth(., keep_year = TRUE, label = TRUE)) + 
+  scale_y_continuous(labels = scales::percent) + 
+  labs(x = NULL, y = "2021 jan 4 = 100%", color = NULL)
+
+p2
+```
+
+<img src="figures/crude_price_index-1.png" style="display: block; margin: auto;" />
+
+``` r
+patchwork::wrap_plots(p1, p2, ncol = 1, heights = c(3, 1))
+```
+
+<img src="figures/crude_price_combined-1.png" style="display: block; margin: auto;" />
 
 ``` r
 download_days <- fuel_df %>% 
@@ -86,3 +121,5 @@ calendR::calendR(
 ```
 
 <img src="figures/calendar-1.png" style="display: block; margin: auto;" />
+
+## EDA

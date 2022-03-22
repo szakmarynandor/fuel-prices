@@ -134,6 +134,8 @@ crude_df <- read_csv("data/Crude Oil Urals Europe CFR Spot Historical Data.csv")
 
 library(rvest)
 
+Sys.setlocale("LC_TIME") # mac os specific language setup for Hungarian dates
+
 crude_df <- read_html("https://www.mnb.hu/arfolyam-tablazat?deviza=rbCurrencySelect&devizaSelected=USD&datefrom=2021.01.01.&datetill=2022.03.17.&order=1") %>% 
   html_table() %>% 
   .[[1]] %>% 

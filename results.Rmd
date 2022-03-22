@@ -34,7 +34,9 @@ source("codes/utils.R")
 load("data/fuel_df.RData")
 load("data/city_df.RData")
 load("data/energy_agency_df.RData")
+load("data/highway_df.RData")
 load("data/crude_df.RData")
+load("data/in_distance_df.RData")
 
 theme_set(
   theme_bw() + 
@@ -59,8 +61,8 @@ energy_agency_df %>%
   labs(fill = NULL, linetype = NULL, color = "Fuel type", x = NULL, y = "Reported average fuel price (Hungrian Forint)")
 ```
 
-```{r crude_price}
-crude_df %>% 
+```{r crude_price_raw}
+p1 <- crude_df %>% 
   mutate(price_huf = crude_price * usd_huf) %>% 
   pivot_longer(-1) %>% 
   mutate(name = fct_inorder(name)) %>% 
@@ -69,8 +71,42 @@ crude_df %>%
   facet_wrap(~ name, scales = "free_y", ncol = 1, labeller = as_labeller(c("usd_huf" = "US dollar in HUF", "crude_price" = "Crude oil price in US dollar", "price_huf" = "Crude oil price in HUF"))) + 
   geom_line() + 
   scale_x_date(breaks = scales::date_breaks("months"), labels = ~ NiceMonth(., keep_year = TRUE, label = TRUE)) + 
-  labs(x = NULL, y = NULL)
+  labs(x = NULL, y = " ")
+
+p1
 ```
+
+
+```{r crude_price_index, fig.height=4}
+p2 <- crude_df %>% 
+  mutate(price_huf = crude_price * usd_huf) %>% 
+  slice(-1) %>% 
+  mutate_at(-1, ~ . / first(.)) %>% 
+  pivot_longer(-1) %>%
+  mutate(
+    name = fct_inorder(name),
+    name = fct_relabel(name, ~ case_when(
+      . == "usd_huf" ~ "US dollar in HUF", 
+      . == "crude_price" ~ "Crude oil price in US dollar",
+      . == "price_huf" ~ "Crude oil price in HUF"
+    ))
+    ) %>% 
+  na.omit() %>% 
+  ggplot(aes(time, value, color = name)) + 
+  geom_hline(yintercept = 1, lty = 2) +
+  geom_line() + 
+  scale_x_date(breaks = scales::date_breaks("months"), labels = ~ NiceMonth(., keep_year = TRUE, label = TRUE)) + 
+  scale_y_continuous(labels = scales::percent) + 
+  labs(x = NULL, y = "2021 jan 4 = 100%", color = NULL)
+
+p2
+```
+
+
+```{r crude_price_combined, fig.height=8}
+patchwork::wrap_plots(p1, p2, ncol = 1, heights = c(3, 1))
+```
+
 
 ```{r calendar, fig.width=11, fig.height=7}
 download_days <- fuel_df %>% 
@@ -87,5 +123,61 @@ calendR::calendR(
   special.days = download_days - as.Date("2021-07-31"),
   start = "M"
 )
+```
+
+## EDA
+
+```{r}
+fuel_df %>% 
+  group_by(address) %>% 
+  summarise(date = max(date)) %>% 
+  filter(date < "2022-03-07" ) %>% 
+  count(date) %>% 
+  mutate(n = cumsum(n)) %>% 
+  ggplot(aes(date, n)) + 
+  geom_line() + 
+  geom_point()
+```
+
+```{r}
+fuel_df
+```
+
+```{r}
+in_distance_df <- fuel_df %>% 
+  filter(date == "2021-11-01" | date == "2021-12-15" | date == "2022-01-15") %>% 
+  group_by(date) %>% 
+  group_split(.keep = TRUE) %>% 
+  map(in_distance, 2) %>% 
+  map2_df(c("2021-11-01", "2021-12-15", "2022-01-15"), ~ mutate(.x, date = lubridate::ymd(.y)))
+```
+
+
+```{r}
+fuel_df %>% 
+  filter(type == "95-ös Benzin E10") %>% 
+  filter(date == "2021-11-01" | date == "2021-12-15" | date == "2022-01-15") %>% 
+  crossing(select(highway_df, highway_lat = Latitude, highway_lon = Longitude)) %>% 
+  mutate(
+    highway_dis = ((highway_lat - Latitude)^2 + (highway_lon - Longitude)^2)^.5,
+    highway_dis = highway_dis * .01506
+    ) %>% 
+  group_by(date, address) %>% 
+  slice_min(highway_dis) %>% 
+  left_join(in_distance_df) %>% 
+  ungroup() %>% 
+  select(price, brand, highway_dis, in_2km, date) %>% 
+  mutate(date = as.character(date)) %>% 
+  GGally::ggpairs(aes(color = date))
+```
+
+```{r}
+fuel_df %>% 
+  filter(type == "95-ös Benzin E10") %>% 
+  group_by(date) %>% 
+  group_split() %>% 
+  
+  map_
+  mutate(w = lubridate::week(date))
 ```
 
