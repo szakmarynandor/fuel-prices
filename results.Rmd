@@ -34,7 +34,7 @@ source("codes/utils.R")
 load("data/fuel_df.RData")
 load("data/city_df.RData")
 load("data/energy_agency_df.RData")
-load("data/highway_df.RData")
+load("data/highway_distance_df")
 load("data/crude_df.RData")
 load("data/in_distance_df.RData")
 
@@ -90,7 +90,7 @@ p2 <- crude_df %>%
       . == "crude_price" ~ "Crude oil price in US dollar",
       . == "price_huf" ~ "Crude oil price in HUF"
     ))
-    ) %>% 
+  ) %>% 
   na.omit() %>% 
   ggplot(aes(time, value, color = name)) + 
   geom_hline(yintercept = 1, lty = 2) +
@@ -161,7 +161,7 @@ fuel_df %>%
   mutate(
     highway_dis = ((highway_lat - Latitude)^2 + (highway_lon - Longitude)^2)^.5,
     highway_dis = highway_dis * .01506
-    ) %>% 
+  ) %>% 
   group_by(date, address) %>% 
   slice_min(highway_dis) %>% 
   left_join(in_distance_df) %>% 
@@ -171,13 +171,25 @@ fuel_df %>%
   GGally::ggpairs(aes(color = date))
 ```
 
+
 ```{r}
 fuel_df %>% 
   filter(type == "95-ös Benzin E10") %>% 
-  group_by(date) %>% 
-  group_split() %>% 
-  
-  map_
-  mutate(w = lubridate::week(date))
+  mutate(
+    stage = case_when(
+      date < "2021-11-01" ~ "stage1",
+      date < "2021-12-15" ~ "stage2",
+      date < "2021-01-015" ~ "stage3",
+      TRUE ~ as.character(NA)
+    )
+  ) %>%
+  rename(time = date) %>% 
+  left_join(highway_distance_df) %>% 
+  left_join(
+    crude_df %>% 
+  mutate(crude_in_huf = crude_price * usd_huf)
+  ) %>% 
+  left_join(distance_from_szazhalom_df)
 ```
+
 

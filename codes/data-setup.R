@@ -102,9 +102,37 @@ highway_df <- readxl::read_excel("data/20211125-ap-au_csomópontok.xls") %>% # F
   mutate_at(vars(eovx:eovy), round) %>% 
   mutate_at(vars(eovx:eovy), as.character) %>% 
   left_join(eov_df) %>% 
-    na.omit()
+  na.omit()
 
 save(highway_df, file = "data/highway_df.RData")
+
+library(sf)
+
+fuel_sf <- fuel_df %>% 
+  select(address, Latitude, Longitude) %>% 
+  unique() %>% 
+  mutate(geometry = map2(Longitude, Latitude, ~ st_point(c(.x, .y)))) %>% 
+  st_as_sf() %>% 
+  st_set_crs(4326)
+
+highway_sf <- highway_df %>% 
+  select(nev, Latitude, Longitude) %>% 
+  unique() %>% 
+  mutate(geometry = map2(Longitude, Latitude, ~ st_point(c(.x, .y)))) %>% 
+  st_as_sf() %>% 
+  st_set_crs(4326)
+
+highway_distance_df <- st_distance(fuel_sf, highway_sf) %>% 
+  apply(1, min) %>% 
+  enframe(value = "highway_distance", name = NULL) %>% 
+  bind_cols(fuel_sf) %>% 
+  select(address, highway_distance) %>% 
+  mutate(
+    highway_distance = ifelse(address %in% unique(filter(fuel_df, highway)$address), 0, highway_distance),
+    highway_distance = highway_distance / 1e3  
+  )
+
+save(highway_distance_df, file = "data/highway_distance_df")
 
 energy_agency_2022_df <- readxl::read_excel("data/hazai_koolajpiaci_informaciok_2012_2022.xls", sheet = "2022") %>% 
   set_names("time", "petrol", "gasoil") %>% 
@@ -150,3 +178,18 @@ crude_df <- read_html("https://www.mnb.hu/arfolyam-tablazat?deviza=rbCurrencySel
   arrange(time)
 
 save(crude_df, file = "data/crude_df.RData")
+
+distance_from_szazhalom_df <- granatlib::Hungarian_map_admin8 %>% 
+  mutate(geometry = st_centroid(geometry)) %>% 
+  st_transform(crs = 4326) %>% 
+  filter(NAME == "Százhalombatta") %>% 
+    st_distance(fuel_sf) %>% 
+    as.numeric() %>% 
+    enframe(value = "distance_from_szazhalom", name = NULL) %>% 
+    mutate(distance_from_szazhalom = distance_from_szazhalom / 1e3)
+
+save(distance_from_szazhalom_df, file = "data/distance_from_szazhalom_df.RData")
+
+
+
+
