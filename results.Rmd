@@ -37,6 +37,7 @@ load("data/energy_agency_df.RData")
 load("data/highway_distance_df")
 load("data/crude_df.RData")
 load("data/in_distance_df.RData")
+load("data/income.RData")
 
 theme_set(
   theme_bw() + 
@@ -173,23 +174,67 @@ fuel_df %>%
 
 
 ```{r}
-fuel_df %>% 
-  filter(type == "95-ös Benzin E10") %>% 
+df <- fuel_df %>% 
+  filter(type == "100-As Benzin E5") %>% 
   mutate(
     stage = case_when(
-      date < "2021-11-01" ~ "stage1",
-      date < "2021-12-15" ~ "stage2",
-      date < "2021-01-015" ~ "stage3",
+      date < "2021-10-01" ~ "stage1",
+      date < "2021-11-15" ~ "stage2",
+      date < "2021-12-31" ~ "stage3",
+      date < "2022-03-01" ~ "stage4",
       TRUE ~ as.character(NA)
     )
   ) %>%
+  drop_na(stage) %>% 
   rename(time = date) %>% 
   left_join(highway_distance_df) %>% 
   left_join(
     crude_df %>% 
   mutate(crude_in_huf = crude_price * usd_huf)
   ) %>% 
-  left_join(distance_from_szazhalom_df)
+  left_join(distance_from_szazhalom_df) %>% 
+  left_join(count_competitves(c(5e2, 2e3, 5e3, 2e4))) %>% 
+  left_join(city_df) %>% 
+  left_join(income_df)
 ```
 
+```{r}
+df %>% 
+  filter(time == "2021-12-01") %>% 
+  mutate(
+    brand = fct_lump(brand, n = 4, other_level = "Egyéb"),
+    competitives_in_2000m = competitives_in_2000m > 0
+    ) %>% 
+  lm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + competitives_in_2000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap) %>% 
+  GGally::ggcoef_model()
+```
+
+```{r}
+df %>% 
+  filter(time == "2021-09-10") %>% 
+  ggplot(aes(price)) + 
+  geom_histogram()
+```
+
+```{r}
+df %>% 
+  group_by(time) %>% 
+  summarise(
+    mean = mean(price, na.rm = TRUE),
+    sd = sd(price, na.rm = TRUE),
+    skewness = moments::skewness(price, na.rm = TRUE),
+    kurtosis = moments::kurtosis(price, na.rm = TRUE),
+    n = n()
+  ) %>% 
+  pivot_longer(-1) %>% 
+  ggplot(aes(time, value, color = name)) +
+  geom_line() +
+  facet_wrap(~ name, scales = "free_y")
+```
+
+```{r}
+df %>% 
+  filter(time == "2021-09-10") %>% 
+  count(brand)
+```
 

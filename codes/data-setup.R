@@ -36,25 +36,25 @@ fuel_df <- fuel_df %>%
     price = gsub(",.*", "", price), # remove characters from price
     price = as.numeric(price),
     city = gsub(" .*", "", city),
-    brand = str_remove_all(brand, '<img src="images/partner_logo/'),
+    brand = str_remove_all(brand,  '<img src="images/partner_logo/'),
     brand = str_remove_all(brand, '" style="float:left; margin-right:10px;"/>'),
     brand = gsub("\\d*_", "", brand),
     brand = str_remove_all(brand, "[.]png"),
     brand = case_when(
-      brand == "bb1bd22248888770445410b0e36db4e1" ~ "MOL",
-      brand == "omv" ~ "OMV",
-      brand == "shell" ~ "Shell",
-      brand == "lukoil" ~ "Lukoil",
-      brand == "mobilpetrol" ~ "Mobilpetrol",
-      brand == "oil!" ~ "OIL!",
-      brand == "avia" ~ "Avia",
-      brand == "auchan" ~ "Auchan",
-      brand == "envi" ~ "ENVI",
-      brand == "molpartner" ~ "MOL",
-      brand == "edo" ~ "EDO",
-      brand == "hunpetrol" ~ "HunPetrol",
-      brand == "nkm" ~ "NKM",
-      brand == "grovi" ~ "Grovi",
+      brand  == "bb1bd22248888770445410b0e36db4e1" ~ "MOL",
+      brand  == "omv" ~ "OMV",
+      brand  == "shell" ~ "Shell",
+      brand  == "lukoil" ~ "Lukoil",
+      brand  == "mobilpetrol" ~ "Mobilpetrol",
+      brand  == "oil!" ~ "OIL!",
+      brand  == "avia" ~ "Avia",
+      brand  == "auchan" ~ "Auchan",
+      brand  == "envi" ~ "ENVI",
+      brand  == "molpartner" ~ "MOL",
+      brand  == "edo" ~ "EDO",
+      brand  == "hunpetrol" ~ "HunPetrol",
+      brand  == "nkm" ~ "NKM",
+      brand  == "grovi" ~ "Grovi",
       T ~ "Egyéb"
     ),
     city = case_when(
@@ -134,6 +134,52 @@ highway_distance_df <- st_distance(fuel_sf, highway_sf) %>%
 
 save(highway_distance_df, file = "data/highway_distance_df")
 
+count_competitves <- function(distance = 2e4, diff_brand = TRUE) {
+  
+  map(distance, function(d) {
+    competitives_distance_df <- fuel_sf %>% 
+      st_distance() %>% 
+      data.frame() %>% 
+      set_names(fuel_sf$address) %>% 
+      mutate(neighbour = fuel_sf$address) %>% 
+      pivot_longer(- neighbour, names_to = "address") %>% 
+      filter(neighbour != address) %>% 
+      left_join(
+        fuel_df %>% 
+          select(address, brand) %>% 
+          distinct() %>% 
+          rename(address_brand = brand)
+      ) %>% 
+      left_join(
+        fuel_df %>% 
+          select(address, brand) %>% 
+          distinct() %>% 
+          rename(neighbour_brand = brand, neighbour = address)
+      )
+    
+    if (diff_brand) {
+      competitives_distance_df <- competitives_distance_df %>% 
+        filter(address_brand != neighbour_brand)
+    }
+    var_name <- str_c("competitives_in_", d, "m")
+
+    competitives_distance_df %>% 
+      mutate(value = as.numeric(value)) %>% 
+      filter(value <= d) %>% 
+      count(address) %>% 
+      set_names("address", var_name)
+  }) %>% 
+    reduce(left_join) %>% 
+    left_join(
+      x = fuel_df %>% 
+        select(address) %>% 
+        distinct()
+    ) %>% 
+    mutate_at(-1, ~ ifelse(is.na(.), 0, .))
+}
+
+count_competitves(distance = 2000)
+
 energy_agency_2022_df <- readxl::read_excel("data/hazai_koolajpiaci_informaciok_2012_2022.xls", sheet = "2022") %>% 
   set_names("time", "petrol", "gasoil") %>% 
   slice(-(1:which(petrol == "Ft/l"))) %>% 
@@ -179,17 +225,25 @@ crude_df <- read_html("https://www.mnb.hu/arfolyam-tablazat?deviza=rbCurrencySel
 
 save(crude_df, file = "data/crude_df.RData")
 
-distance_from_szazhalom_df <- granatlib::Hungarian_map_admin8 %>% 
+distance_from_szazhalom_df <- granatlib::Hungarian_map_admin8 %>%
   mutate(geometry = st_centroid(geometry)) %>% 
   st_transform(crs = 4326) %>% 
   filter(NAME == "Százhalombatta") %>% 
-    st_distance(fuel_sf) %>% 
-    as.numeric() %>% 
-    enframe(value = "distance_from_szazhalom", name = NULL) %>% 
-    mutate(distance_from_szazhalom = distance_from_szazhalom / 1e3)
+  st_distance(fuel_sf) %>% 
+  as.numeric() %>% 
+  enframe(value = "distance_from_szazhalom", name = NULL) %>% 
+  mutate(distance_from_szazhalom = distance_from_szazhalom / 1e3) %>% 
+  bind_cols(fuel_sf) %>% 
+  select(address, distance_from_szazhalom)
 
 save(distance_from_szazhalom_df, file = "data/distance_from_szazhalom_df.RData")
 
+income_df <- readxl::read_excel("data/tp_jaras_jov.xlsx") %>% 
+    mutate(szja_alap = as.numeric(szja_alap)) %>% 
+    drop_na() %>% 
+    rename(city = telepules, lau = jaras)
+
+save(income_df, file = "data/income.RData")
 
 
-
+    
