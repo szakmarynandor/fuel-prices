@@ -38,6 +38,7 @@ load("data/highway_distance_df")
 load("data/crude_df.RData")
 load("data/in_distance_df.RData")
 load("data/income.RData")
+load("data/distance_from_szazhalom_df.RData")
 
 theme_set(
   theme_bw() + 
@@ -158,16 +159,10 @@ in_distance_df <- fuel_df %>%
 fuel_df %>% 
   filter(type == "95-ös Benzin E10") %>% 
   filter(date == "2021-11-01" | date == "2021-12-15" | date == "2022-01-15") %>% 
-  crossing(select(highway_df, highway_lat = Latitude, highway_lon = Longitude)) %>% 
-  mutate(
-    highway_dis = ((highway_lat - Latitude)^2 + (highway_lon - Longitude)^2)^.5,
-    highway_dis = highway_dis * .01506
-  ) %>% 
-  group_by(date, address) %>% 
-  slice_min(highway_dis) %>% 
-  left_join(in_distance_df) %>% 
+  left_join(highway_distance_df) %>%  
+  left_join(count_competitives(c(2000, 5000, 20000))) %>% 
   ungroup() %>% 
-  select(price, brand, highway_dis, in_2km, date) %>% 
+  select(price, brand, date, starts_with("competitives")) %>% 
   mutate(date = as.character(date)) %>% 
   GGally::ggpairs(aes(color = date))
 ```
@@ -175,7 +170,7 @@ fuel_df %>%
 
 ```{r}
 df <- fuel_df %>% 
-  filter(type == "100-As Benzin E5") %>% 
+  filter(type == "95-ös Benzin E10") %>% 
   mutate(
     stage = case_when(
       date < "2021-10-01" ~ "stage1",
@@ -190,22 +185,24 @@ df <- fuel_df %>%
   left_join(highway_distance_df) %>% 
   left_join(
     crude_df %>% 
-  mutate(crude_in_huf = crude_price * usd_huf)
+      mutate(crude_in_huf = crude_price * usd_huf)
   ) %>% 
   left_join(distance_from_szazhalom_df) %>% 
-  left_join(count_competitves(c(5e2, 2e3, 5e3, 2e4))) %>% 
+  left_join(count_competitives(c(5e2, 2e3, 5e3, 2e4))) %>% 
   left_join(city_df) %>% 
   left_join(income_df)
 ```
 
 ```{r}
 df %>% 
-  filter(time == "2021-12-01") %>% 
+  filter(time == "2021-10-01") %>% 
   mutate(
-    brand = fct_lump(brand, n = 4, other_level = "Egyéb"),
-    competitives_in_2000m = competitives_in_2000m > 0
-    ) %>% 
-  lm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + competitives_in_2000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap) %>% 
+    # brand = fct_lump(brand, n = 4, other_level = "Egyéb"),
+    competitives_in_2000m = as.factor(competitives_in_2000m),
+    highway_distance = highway_distance < 1
+  ) %>% 
+  mutate_if(is.numeric, ~ . / sd(., na.rm = TRUE) - mean(., na.rm = TRUE)) %>% 
+  lm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + I(distance_from_szazhalom^2) + competitives_in_2000m + competitives_in_5000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap) %>% 
   GGally::ggcoef_model()
 ```
 
@@ -233,8 +230,79 @@ df %>%
 ```
 
 ```{r}
+library(plm)
+```
+
+
+```{r pooling}
 df %>% 
-  filter(time == "2021-09-10") %>% 
-  count(brand)
+  filter(lubridate::floor_date(time, "month") == "2021-10-01") %>% 
+  mutate(time = as.numeric(time - min(time))) %>% 
+  distinct(address, time, .keep_all = TRUE) %>% 
+  plm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + I(distance_from_szazhalom^2) + competitives_in_2000m + competitives_in_5000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap, model = "pooling", index = c("address","time")) %>% 
+  GGally::ggcoef_model()
+slice(-1) %>% 
+  mutate(
+    ub = estimate + std.error * qnorm(.975),
+    bb = estimate - std.error * qnorm(.975),
+  ) %>% 
+  ggplot() +
+  geom_errorbar(aes(xmin = bb, xmax = ub, y = term, color = term), show.legend = FALSE) + 
+  geom_point(aes(x = estimate, y = term, color = term, fill = p.value < .05), shape = 21, show.legend = FALSE)
+```
+
+```{r}
+fit_monthly <- df %>% 
+  mutate(m = lubridate::floor_date(time, "month")) %>% 
+  mutate(time = as.numeric(time - min(time))) %>% 
+  distinct(address, time, .keep_all = TRUE) %>% 
+  group_by(m) %>% 
+  nest() %>% 
+  mutate(
+    l = months(m),
+    fit_pooled = map(data, ~ {
+      plm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + I(distance_from_szazhalom^2) + as.factor(competitives_in_500m) + competitives_in_2000m + competitives_in_5000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap , model = "pooling", index = c("address","time"), data = .) 
+    }),
+    fit_random = map(data, ~ {
+      plm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + I(distance_from_szazhalom^2) + as.factor(competitives_in_500m) + competitives_in_2000m + competitives_in_5000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap, model = "random", index = c("address","time"), data = .)
+    })
+  )
+```
+
+```{r}
+fit_monthly %>% 
+  filter(m >= "2021-10-01") %>% 
+  pull(fit_random, l) %>% 
+  GGally::ggcoef_compare()
+```
+
+```{r}
+fit_monthly %>% 
+  filter(m >= "2021-10-01") %>% 
+  pull(fit_pooled, l) %>% 
+  GGally::ggcoef_compare()
+```
+
+```{r}
+fit_monthly %>% 
+  select(m, fit_pooled, fit_random) %>% 
+  pivot_longer(fit_pooled:fit_random) %>% 
+  mutate(
+    name = str_remove(name, "fit_"),
+    map_df(value, broom::glance)
+  ) %>% 
+  ggplot(aes(m, r.squared, fill = name)) +
+  geom_col(position = position_dodge()) +
+  labs(fill = NULL)
+```
+
+
+```{r random}
+df %>% 
+  filter(lubridate::floor_date(time, "month") == "2021-10-01") %>% 
+  mutate(time = as.numeric(time - min(time))) %>% 
+  distinct(address, time, .keep_all = TRUE) %>% 
+  plm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + I(distance_from_szazhalom^2) + competitives_in_2000m + competitives_in_5000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap, model = "random", index = c("address","time")) %>% 
+  GGally::ggcoef_model()
 ```
 

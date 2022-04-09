@@ -134,52 +134,6 @@ highway_distance_df <- st_distance(fuel_sf, highway_sf) %>%
 
 save(highway_distance_df, file = "data/highway_distance_df")
 
-count_competitves <- function(distance = 2e4, diff_brand = TRUE) {
-  
-  map(distance, function(d) {
-    competitives_distance_df <- fuel_sf %>% 
-      st_distance() %>% 
-      data.frame() %>% 
-      set_names(fuel_sf$address) %>% 
-      mutate(neighbour = fuel_sf$address) %>% 
-      pivot_longer(- neighbour, names_to = "address") %>% 
-      filter(neighbour != address) %>% 
-      left_join(
-        fuel_df %>% 
-          select(address, brand) %>% 
-          distinct() %>% 
-          rename(address_brand = brand)
-      ) %>% 
-      left_join(
-        fuel_df %>% 
-          select(address, brand) %>% 
-          distinct() %>% 
-          rename(neighbour_brand = brand, neighbour = address)
-      )
-    
-    if (diff_brand) {
-      competitives_distance_df <- competitives_distance_df %>% 
-        filter(address_brand != neighbour_brand)
-    }
-    var_name <- str_c("competitives_in_", d, "m")
-
-    competitives_distance_df %>% 
-      mutate(value = as.numeric(value)) %>% 
-      filter(value <= d) %>% 
-      count(address) %>% 
-      set_names("address", var_name)
-  }) %>% 
-    reduce(left_join) %>% 
-    left_join(
-      x = fuel_df %>% 
-        select(address) %>% 
-        distinct()
-    ) %>% 
-    mutate_at(-1, ~ ifelse(is.na(.), 0, .))
-}
-
-count_competitves(distance = 2000)
-
 energy_agency_2022_df <- readxl::read_excel("data/hazai_koolajpiaci_informaciok_2012_2022.xls", sheet = "2022") %>% 
   set_names("time", "petrol", "gasoil") %>% 
   slice(-(1:which(petrol == "Ft/l"))) %>% 
