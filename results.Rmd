@@ -188,7 +188,7 @@ df <- fuel_df %>%
       mutate(crude_in_huf = crude_price * usd_huf)
   ) %>% 
   left_join(distance_from_szazhalom_df) %>% 
-  left_join(count_competitives(c(5e2, 2e3, 5e3, 2e4))) %>% 
+  left_join(count_competitives(c(5e2, 1e3, 2e3, 5e3, 2e4))) %>% 
   left_join(city_df) %>% 
   left_join(income_df)
 ```
@@ -205,6 +205,22 @@ df %>%
   lm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + I(distance_from_szazhalom^2) + competitives_in_2000m + competitives_in_5000m + allami_kozutak_hossza_km + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap) %>% 
   GGally::ggcoef_model()
 ```
+
+```{r}
+df %>% 
+  filter(time < "2021-11-12") %>% 
+  mutate(
+    # brand = fct_lump(brand, n = 4, other_level = "Egyéb"),
+    #competitives_in_1000m = as.factor(competitives_in_1000m),
+    highway_distance = highway_distance < 1,
+    brand = factor(brand, levels = c("MOL", "Shell", "OMV", "Lukoil", "Mobilpetrol", "OIL!", "Avia",
+                                     "Auchan", "ENVI", "EDO", "HunPetrol", "NKM", "Grovi", "Egyéb"))
+  ) %>%
+  mutate_if(is.numeric, ~ . / sd(., na.rm = TRUE) - mean(., na.rm = TRUE)) %>% 
+  lm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + I(distance_from_szazhalom^2) + competitives_in_2000m + allami_kozutak_hossza_km + highway*brand + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap + crude_in_huf) %>% 
+  GGally::ggcoef_model()
+```
+
 
 ```{r}
 df %>% 
@@ -306,3 +322,67 @@ df %>%
   GGally::ggcoef_model()
 ```
 
+```{r}
+library(panelvar)
+```
+
+```{r}
+df_1 <- df %>%
+  filter(type == "95-ös Benzin E10", time < "2021-11-12") %>% 
+  mutate(
+    highway_distance = highway_distance < 1,
+    brand = factor(brand, levels = c("MOL", "Shell", "OMV", "Lukoil", "Mobilpetrol", "OIL!", "Avia",
+                                     "Auchan", "ENVI", "EDO", "HunPetrol", "NKM", "Grovi", "Egyéb"))
+    )
+df_1 <- as.data.frame(df_1)
+  pvargmm(
+    dependent_vars = "price",
+    lags = 3,
+    exog_vars = c("highway_distance", "brand", "highway", "distance_from_szazhalom", "competitives_in_2000m", "allami_kozutak_hossza_km", "szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db", "szja_alap", "crude_in_huf"),
+    panel_identifier = c("address", "time"),
+    transformation = "fd",
+    steps = "twostep",
+    system_instruments = FALSE,
+    max_instr_dependent_vars = 99,
+    min_instr_dependent_vars = 1,
+    data=df_1
+)
+```
+
+```{r}
+df_1 <- df
+```
+
+```{r}
+df_1$crude_in_huf_l <- df_1$crude_in_huf/158.987295
+```
+
+
+```{r pooling (pre price limit)}
+df_1 %>% 
+  filter(time < "2021-11-14") %>% 
+  mutate(
+    #competitives_in_2000m = as.factor(competitives_in_2000m),
+    highway_distance = highway_distance < 1,
+    brand = factor(brand, levels = c("MOL", "Shell", "OMV", "Lukoil", "Mobilpetrol", "OIL!", "Avia",
+                                     "Auchan", "ENVI", "EDO", "HunPetrol", "NKM", "Grovi", "Egyéb"))
+  ) %>%
+  mutate_if(is.numeric, ~ . / sd(., na.rm = TRUE) - mean(., na.rm = TRUE)) %>% 
+  plm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + competitives_in_2000m + allami_kozutak_hossza_km + highway*brand + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap + crude_in_huf_l, model = "pooling", index = c("address", "time")) %>% 
+  GGally::ggcoef_model()
+```
+
+```{r random (pre price limit)}
+df_1 %>% 
+  filter(time < "2021-11-14") %>% 
+  mutate(
+    #competitives_in_2000m = as.factor(competitives_in_2000m),
+    highway_distance = highway_distance < 1,
+    brand = factor(brand, levels = c("MOL", "Shell", "OMV", "Lukoil", "Mobilpetrol", "OIL!", "Avia",
+                                     "Auchan", "ENVI", "EDO", "HunPetrol", "NKM", "Grovi", "Egyéb"))
+  ) %>%
+  distinct(address, time, .keep_all = TRUE) %>%
+  mutate_if(is.numeric, ~ . / sd(., na.rm = TRUE) - mean(., na.rm = TRUE)) %>% 
+  plm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + competitives_in_2000m + allami_kozutak_hossza_km + highway*brand + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap + crude_in_huf_l, model = "random", index = c("address", "time")) %>% 
+  GGally::ggcoef_model()
+```
