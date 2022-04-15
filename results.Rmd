@@ -194,6 +194,32 @@ df <- fuel_df %>%
 ```
 
 ```{r}
+df_diesel <- fuel_df %>% 
+  filter(type == "Gázolaj") %>% 
+  mutate(
+    stage = case_when(
+      date < "2021-10-01" ~ "stage1",
+      date < "2021-11-15" ~ "stage2",
+      date < "2021-12-31" ~ "stage3",
+      date < "2022-03-01" ~ "stage4",
+      TRUE ~ as.character(NA)
+    )
+  ) %>%
+  drop_na(stage) %>% 
+  rename(time = date) %>% 
+  left_join(highway_distance_df) %>% 
+  left_join(
+    crude_df %>% 
+      mutate(crude_in_huf = crude_price * usd_huf)
+  ) %>% 
+  left_join(distance_from_szazhalom_df) %>% 
+  left_join(count_competitives(c(5e2, 1e3, 2e3, 5e3, 2e4))) %>% 
+  left_join(city_df) %>% 
+  left_join(income_df)
+```
+
+
+```{r}
 df %>% 
   filter(time == "2021-10-01") %>% 
   mutate(
@@ -386,3 +412,24 @@ df_1 %>%
   plm(formula = price ~ highway_distance + brand + highway + distance_from_szazhalom + competitives_in_2000m + allami_kozutak_hossza_km + highway*brand + szemelygepkocsik_szama_az_uzemelteto_lakhelye_szerint_db + szja_alap + crude_in_huf_l, model = "random", index = c("address", "time")) %>% 
   GGally::ggcoef_model()
 ```
+
+
+```{r}
+pvargmm(
+ dependent_vars = c("price"),
+ lags = 4,
+ predet_vars = c("competitives_in_2000m"),
+ #exog_vars = c("competitives_in_2000m"),
+ transformation = "fd",
+ data = df,
+ panel_identifier = c("address", "time"),
+ steps = c("twostep"),
+ system_instruments = FALSE,
+ max_instr_dependent_vars = 99,
+ max_instr_predet_vars = 99,
+ min_instr_dependent_vars = 2L,
+ min_instr_predet_vars = 1L,
+ collapse = FALSE
+)
+```
+
